@@ -19,10 +19,10 @@
     <!-- Firebase 依赖 -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
-        import { getAuth, signInAnonymously, signInWithCustomToken } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+        import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
         import { getFirestore, collection, addDoc, getDoc, doc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
         
-        window.FirebaseSDK = { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, getFirestore, collection, addDoc, getDoc, doc };
+        window.FirebaseSDK = { initializeApp, getAuth, signInAnonymously, getFirestore, collection, addDoc, getDoc, doc };
     </script>
 
     <style>
@@ -438,9 +438,9 @@
 
         const initFirebase = async () => {
             // 1. 引入 Firebase SDK 功能
-            const { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, getFirestore, collection, addDoc, getDoc, doc } = window.FirebaseSDK;
+            const { initializeApp, getAuth, signInAnonymously, getFirestore, collection, addDoc, getDoc, doc } = window.FirebaseSDK;
 
-            // 2. 配置
+            // 2. 粘贴您刚才复制的配置
             const firebaseConfig = {
                 apiKey: "AIzaSyDPJ6mZ24Yl2ji4JOq4J2tWIuzMZX4ldFw",
                 authDomain: "blueeee-63455.firebaseapp.com",
@@ -594,6 +594,9 @@
                 }
             } catch (e) {
                 console.error("Load failed", e);
+            } finally {
+                // 修复：确保无论加载成功与否，都关闭 Loading 界面
+                document.getElementById('loader').style.display = 'none';
             }
         };
 
