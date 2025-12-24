@@ -438,45 +438,34 @@
 
         const initFirebase = async () => {
             // 1. 引入 Firebase SDK 功能
-            const { initializeApp, getAuth, signInAnonymously, 			signInWithCustomToken, getFirestore, collection, addDoc, getDoc, 	doc } = window.FirebaseSDK;
+            const { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, getFirestore, collection, addDoc, getDoc, doc } = window.FirebaseSDK;
 
-            // 2. 粘贴您刚才复制的配置 (注意：要是您自己的真实数据)
+            // 2. 配置
             const firebaseConfig = {
                 apiKey: "AIzaSyDPJ6mZ24Yl2ji4JOq4J2tWIuzMZX4ldFw",
-  		authDomain: "blueeee-63455.firebaseapp.com",
-  		projectId: "blueeee-63455",
-  		storageBucket: "blueeee-63455.firebasestorage.app",
-  		messagingSenderId: "199195705398",
-  		appId: "1:199195705398:web:14f4004273c64e2d245897",
-  		measurementId: "G-BSEYZK3D9P"
+                authDomain: "blueeee-63455.firebaseapp.com",
+                projectId: "blueeee-63455",
+                storageBucket: "blueeee-63455.firebasestorage.app",
+                messagingSenderId: "199195705398",
+                appId: "1:199195705398:web:14f4004273c64e2d245897",
+                measurementId: "G-BSEYZK3D9P"
             };
 
             // 3. 初始化
-            const app = initializeApp(firebaseConfig);
-            const auth = getAuth(app);
-            db = getFirestore(app);
-            appId = "christmas-tree-v1"; // 这里可以随便写个名字作为ID
-
-            // 4. 登录逻辑 (本地运行不需要 CustomToken，直接匿名登录)
             try {
+                const app = initializeApp(firebaseConfig);
+                const auth = getAuth(app);
+                db = getFirestore(app);
+                appId = "christmas-tree-v1";
+
+                // 4. 登录逻辑
                 await signInAnonymously(auth);
                 console.log("Logged in anonymously");
             } catch (error) {
-                console.error("Auth failed:", error);
-            }
-            const app = initializeApp(firebaseConfig);
-            const auth = getAuth(app);
-            db = getFirestore(app);
-            appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-
-            try {
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
+                // Ignore if app already exists (hot reload)
+                if (!/already exists/.test(error.message)) {
+                    console.error("Firebase init failed:", error);
                 }
-            } catch (error) {
-                console.error("Auth failed:", error);
             }
 
             // Check URL for share ID
