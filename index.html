@@ -198,6 +198,14 @@
         .loader-text {
             margin-top: 20px;
             animation: pulse 1.5s infinite;
+            color: #D4AF37;
+            text-align: center;
+            max-width: 80%;
+        }
+        .loader-error {
+            color: #ff4444;
+            font-size: 0.9rem;
+            margin-top: 10px;
         }
 
         @keyframes pulse {
@@ -302,6 +310,7 @@
             <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
         </svg>
         <div class="loader-text">Loading Experience...</div>
+        <div id="loader-error" class="loader-error"></div>
     </div>
 
     <!-- 分享弹窗 -->
@@ -309,16 +318,16 @@
         <div class="modal-content">
             <h2 style="color: #D4AF37; margin-bottom: 10px;">Link Generated!</h2>
             <div class="modal-note">
-                Success! Your tree configuration has been saved to the cloud.<br>
-                Use the link below to share your creation.
+                Success! Saved to cloud.<br>
+                Music and Photos will be shared if they fit within limits.
             </div>
             
             <input type="text" id="share-link-input" readonly>
             
             <div id="preview-warning" class="warning-text" style="display:none;">
                 ⚠️ <b>Preview Environment Detected</b><br>
-                This "blob:" link is local-only and cannot be opened by others. 
-                To share properly, please deploy this HTML file to a web server (e.g., GitHub Pages).
+                This "blob:" link is local-only. 
+                To share, deploy this HTML to a server (GitHub Pages).
             </div>
 
             <button onclick="document.getElementById('share-modal').style.display='none'">Close</button>
@@ -378,6 +387,11 @@
         import { RenderPass } from 'https://cdn.skypack.dev/three@0.128.0/examples/jsm/postprocessing/RenderPass.js';
         import { UnrealBloomPass } from 'https://cdn.skypack.dev/three@0.128.0/examples/jsm/postprocessing/UnrealBloomPass.js';
 
+        // --- 声明全局变量以防止 ReferenceError ---
+        let particleMaterial;
+        let particleSystem;
+        let analyser, dataArray; // 音频分析器
+
         // --- 全局配置 ---
         const CONFIG = {
             colors: {
@@ -420,6 +434,7 @@
             audioData: 0,
             audioCtx: null,
             currentMusicName: "",
+            currentMusicData: null, // Store Base64 music here
             
             // 常量
             originalCameraPos: new THREE.Vector3(0, 30, 100),
@@ -434,13 +449,12 @@
 
         // --- Firebase & Share Logic ---
         let db, appId;
-        const currentPhotos = []; // Base64 data
+        const currentPhotos = []; 
 
         const initFirebase = async () => {
-            // 1. 引入 Firebase SDK 功能
             const { initializeApp, getAuth, signInAnonymously, getFirestore, collection, addDoc, getDoc, doc } = window.FirebaseSDK;
 
-            // 2. 粘贴您刚才复制的配置
+            // ⚠️ 替换为您的 Firebase 配置 ⚠️
             const firebaseConfig = {
                 apiKey: "AIzaSyDPJ6mZ24Yl2ji4JOq4J2tWIuzMZX4ldFw",
                 authDomain: "blueeee-63455.firebaseapp.com",
@@ -451,24 +465,20 @@
                 measurementId: "G-BSEYZK3D9P"
             };
 
-            // 3. 初始化
             try {
                 const app = initializeApp(firebaseConfig);
                 const auth = getAuth(app);
                 db = getFirestore(app);
                 appId = "christmas-tree-v1";
 
-                // 4. 登录逻辑
                 await signInAnonymously(auth);
                 console.log("Logged in anonymously");
             } catch (error) {
-                // Ignore if app already exists (hot reload)
                 if (!/already exists/.test(error.message)) {
                     console.error("Firebase init failed:", error);
                 }
             }
 
-            // Check URL for share ID
             const urlParams = new URLSearchParams(window.location.search);
             const shareId = urlParams.get('share');
             if (shareId) {
@@ -476,7 +486,7 @@
             }
         };
 
-        // Compress image for storage
+        // Compress image
         const compressImage = (fileOrUrl) => {
             return new Promise((resolve) => {
                 const img = new Image();
@@ -497,7 +507,7 @@
                     canvas.width = width;
                     canvas.height = height;
                     ctx.drawImage(img, 0, 0, width, height);
-                    resolve(canvas.toDataURL('image/jpeg', 0.6));
+                    resolve(canvas.toDataURL('image/jpeg', 0.5));
                 };
                 if (typeof fileOrUrl === 'string') img.src = fileOrUrl;
                 else {
@@ -508,6 +518,49 @@
             });
         };
 
+        // --- 音频初始化 & 处理 ---
+        const setupAudio = (source) => {
+            const audioCtx = STATE.audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+            STATE.audioCtx = audioCtx;
+            
+            const audio = new Audio();
+            if (typeof source === 'string') {
+                audio.src = source;
+            } else {
+                audio.src = URL.createObjectURL(source);
+            }
+            
+            audio.crossOrigin = "anonymous";
+            audio.loop = true;
+            
+            const sourceNode = audioCtx.createMediaElementSource(audio);
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 256;
+            sourceNode.connect(analyser);
+            analyser.connect(audioCtx.destination);
+            
+            dataArray = new Uint8Array(analyser.frequencyBinCount);
+            audio.play().catch(e => console.log("Audio play blocked (wait for user interaction)", e));
+        };
+
+        document.getElementById('music-upload').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if(file) {
+                // 1. 本地播放
+                setupAudio(file);
+                STATE.currentMusicName = file.name;
+
+                // 2. 读取为 Base64 以备分享
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    STATE.currentMusicData = ev.target.result;
+                    console.log("Music encoded for sharing, size:", STATE.currentMusicData.length);
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // --- 分享按钮 ---
         document.getElementById('btn-share').addEventListener('click', async () => {
             const btn = document.getElementById('btn-share');
             if (currentPhotos.length === 0) {
@@ -522,20 +575,23 @@
                 const { collection, addDoc } = window.FirebaseSDK;
                 const colRef = collection(db, 'artifacts', appId, 'public', 'data', 'shared_trees');
                 
-                // Limit to 5 photos to stay safe within 1MB doc limit
                 const photosToSave = currentPhotos.slice(0, 5); 
                 
-                const docRef = await addDoc(colRef, {
+                const payload = {
                     photos: photosToSave,
                     musicName: STATE.currentMusicName || "Unknown",
                     timestamp: new Date().toISOString()
-                });
+                };
 
-                // Generate Link
+                if (STATE.currentMusicData) {
+                    payload.musicData = STATE.currentMusicData;
+                }
+
+                const docRef = await addDoc(colRef, payload);
+
                 const baseUrl = window.location.href.split('?')[0];
                 const shareUrl = `${baseUrl}?share=${docRef.id}`;
                 
-                // Show Modal
                 const modal = document.getElementById('share-modal');
                 const input = document.getElementById('share-link-input');
                 const warning = document.getElementById('preview-warning');
@@ -543,60 +599,79 @@
                 input.value = shareUrl;
                 modal.style.display = 'flex';
                 
-                // Warn about blob URLs
                 if (window.location.protocol === 'blob:' || window.location.href.includes('usercontent.goog')) {
                     warning.style.display = 'block';
                 } else {
                     warning.style.display = 'none';
                 }
                 
-                // Copy
                 input.select();
                 document.execCommand('copy');
                 
             } catch (e) {
                 console.error("Share failed", e);
-                alert("Share failed: " + e.message);
+                if (e.message.includes("larger than")) {
+                    alert("Share failed: Total size (Photos + Music) exceeds 1MB limit. Try smaller files.");
+                } else {
+                    alert("Share failed: " + e.message);
+                }
             } finally {
                 btn.disabled = false;
                 btn.innerText = "🔗 Share Link";
             }
         });
 
+        // --- 加载分享 ---
         const loadSharedTree = async (shareId) => {
             const loaderText = document.querySelector('.loader-text');
+            const loaderError = document.getElementById('loader-error');
+            const loader = document.getElementById('loader');
+            
+            loader.style.display = 'flex';
             loaderText.innerText = "Loading Shared Tree...";
             
             try {
                 const { doc, getDoc } = window.FirebaseSDK;
+                await new Promise(r => setTimeout(r, 1000)); // Auth wait
+
                 const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'shared_trees', shareId);
                 const snapshot = await getDoc(docRef);
 
                 if (snapshot.exists()) {
                     const data = snapshot.data();
-                    if (data.musicName) {
-                        alert(`This share includes visual effects.\nSender's music: "${data.musicName}"\nUpload same music for best experience.`);
-                    }
                     
+                    // 加载照片
                     if (data.photos) {
                         photoMeshes.forEach(m => photoGroup.remove(m));
                         photoMeshes.length = 0;
                         currentPhotos.length = 0;
-                        photoTreePositions.length = 0;
                         
                         data.photos.forEach((base64, i) => {
                             createPhotoMesh(base64, i, data.photos.length);
                             currentPhotos.push(base64);
                         });
                     }
+
+                    // 加载音乐
+                    if (data.musicData) {
+                        setTimeout(() => {
+                            alert(`🎄 Shared Content Loaded!\nMusic: "${data.musicName}" included.`);
+                            setupAudio(data.musicData); 
+                        }, 500);
+                    } else if (data.musicName) {
+                        setTimeout(() => {
+                            alert(`🎄 Shared Tree Loaded!\n\nNote: Music file was too large to share.\nThe sender used: "${data.musicName}"\nPlease upload the same file locally.`);
+                        }, 500);
+                    }
                 } else {
-                    alert("Invalid share link");
+                    alert("Invalid share link or data expired.");
                 }
             } catch (e) {
                 console.error("Load failed", e);
+                loaderError.innerText = "Error: " + e.message;
+                alert("Failed to load shared tree:\n" + e.message);
             } finally {
-                // 修复：确保无论加载成功与否，都关闭 Loading 界面
-                document.getElementById('loader').style.display = 'none';
+                loader.style.display = 'none';
             }
         };
 
@@ -777,7 +852,8 @@
         particlesGeometry.setAttribute('aSize', new THREE.Float32BufferAttribute(sizes, 1));
         particlesGeometry.setAttribute('aType', new THREE.Float32BufferAttribute(types, 1));
 
-        const particleMaterial = new THREE.ShaderMaterial({
+        // 赋值给全局变量
+        particleMaterial = new THREE.ShaderMaterial({
             uniforms: { 
                 uTime: { value: 0 }, 
                 uExplosion: { value: 0 }, 
@@ -787,7 +863,7 @@
             },
             vertexShader, fragmentShader, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
         });
-        const particleSystem = new THREE.Points(particlesGeometry, particleMaterial);
+        particleSystem = new THREE.Points(particlesGeometry, particleMaterial);
         scene.add(particleSystem);
 
         // --- 星星 ---
@@ -1082,45 +1158,10 @@
             }
         };
 
-        const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/${file}`});
-        hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
-        hands.onResults(onResults);
-
-        // --- 音频 ---
-        let analyser, dataArray;
-        const setupAudio = (file) => {
-            const audioCtx = STATE.audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-            STATE.audioCtx = audioCtx;
-            
-            const audio = new Audio();
-            audio.src = URL.createObjectURL(file);
-            audio.crossOrigin = "anonymous";
-            audio.loop = true;
-            
-            const source = audioCtx.createMediaElementSource(audio);
-            analyser = audioCtx.createAnalyser();
-            analyser.fftSize = 256;
-            source.connect(analyser);
-            analyser.connect(audioCtx.destination);
-            
-            dataArray = new Uint8Array(analyser.frequencyBinCount);
-            audio.play();
-            
-            // Record name for sharing
-            STATE.currentMusicName = file.name;
-        };
-
-        document.getElementById('music-upload').addEventListener('change', (e) => {
-            if(e.target.files[0]) {
-                setupAudio(e.target.files[0]);
-            }
-        });
-
         document.getElementById('btn-camera').addEventListener('click', async () => {
             document.getElementById('loader').style.display = 'flex';
             document.querySelector('.loader-text').innerText = "Initializing AI Vision...";
             
-            // 初始化音频上下文（解决自动播放策略）
             if (!STATE.audioCtx) {
                 STATE.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             } else if (STATE.audioCtx.state === 'suspended') {
@@ -1145,12 +1186,18 @@
 
         function animate() {
             requestAnimationFrame(animate);
+            
+            // 安全检查：如果材质还未初始化，跳过本次循环
+            if (!particleMaterial) return;
+
             const dt = clock.getDelta();
             const time = clock.getElapsedTime();
 
             if (analyser) {
-                analyser.getByteFrequencyData(dataArray);
-                let sum = 0; for(let i=0; i<20; i++) sum += dataArray[i];
+                // Ensure dataArray exists
+                if (!window.dataArray) window.dataArray = new Uint8Array(analyser.frequencyBinCount);
+                analyser.getByteFrequencyData(window.dataArray);
+                let sum = 0; for(let i=0; i<20; i++) sum += window.dataArray[i];
                 STATE.audioData = sum / 20;
             }
 
